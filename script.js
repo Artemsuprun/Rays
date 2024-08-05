@@ -27,7 +27,7 @@ class Ray {
     this.y1 = y1;
     this.x2 = 0;
     this.y2 = 0;
-    this.a = angle;
+    this.rotate = rotate;
     this.color = color;
   }
 }
