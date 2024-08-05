@@ -1,0 +1,17 @@
+/*
+  File Name:  main.css
+  Author:     Artem Suprun
+  Date:       06/14/2022
+  Summary:    A CSS style file for the JsCanvas folder.
+*/
+
+* {
+    padding: 0;
+    margin: 0;
+}
+
+canvas {
+  display: block;
+  margin: 10px auto;
+  border: 1px black solid;
+}
