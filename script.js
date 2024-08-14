@@ -1,239 +1,347 @@
 //
-//  File Name:  script.js
+//  File Name:  script.js (for light ray)
 //  Author:     Artem Suprun
 //  Date:       06/14/2022
-//  Summary:    A JS script file for the rain folder, which runs a
+//  Summary:    A JS script file for the light ray folder, which runs a
 //              program on the javascript canvas.
 //
 
 
-// player
-class Player {
-  constructor(x, y, size, color, render) {
+// GameLoop
+class CanvasLoop {
+  // public class functions: 
+  constructor(canvas, context = '2d') {
+    // variables 
+    this.canvas = null;
+    this.ctx = null;
+    
+    // initializing canvas and context
+    this.canvas = document.getElementById(canvas);
+    if (!(this.canvas))
+      throw new Error('Failed to get canvas ID');
+    
+    this.ctx = this.canvas.getContext(context);
+    if (!(this.ctx))
+      throw new Error('Failed to get the get canvas context/context does not exist');
+    
+    // initialize public variables
+    this.bg = null;
+    this.w = this.canvas.width;
+    this.h = this.canvas.height;
+  }
+  
+  setSize(w, h) {
+    // validate the parameters
+    if (w < 0 || h < 0)
+      throw new Error('invalid canvas size');
+    
+    // setting the values
+    this.canvas.width = w;
+    this.canvas.height = h;
+    
+    this.w = this.canvas.width;
+    this.h = this.canvas.height;
+  }
+  
+  setBackground(bg) {
+    // check if the user wants a background
+    if (!bg) {
+      this.bg = null;
+    }
+    else {
+      // validate the given color
+      let style = new Option().style;
+      style.color = bg;
+      if (style.color == '')
+        throw new Error('Invalid background color');
+      
+      this.bg = bg;
+    }
+  }
+  
+  // this function clears up the frame.
+  clear() {
+    if (!this.bg) {
+      this.ctx.clearRect(0, 0, this.w, this.h);
+    }
+    else {
+      // fill the background instead of clearing it
+      this.ctx.fillStyle = this.bg;
+      this.ctx.fillRect(0, 0, this.w, this.h);
+  //ctx.fillRect(-canvas.width, -canvas.height, canvas.width*2, canvas.height*2);
+    }
+  }
+  
+  // this function is used to setup objects before the loop starts,
+  //   such as generating walls, etc..
+  setup(...args) {
+    // setup the objects
+    for (let arg of args)
+      arg.setup(this.canvas, this.ctx);
+  }
+  
+  // this function is used to draw objects into the canvas during looping.
+  draw(...args) {
+    for (let arg of args) 
+      arg.draw(this.canvas, this.ctx);
+  }
+  
+  update(...args) {
+    for (let arg of args)
+      arg.update(this.canvas)
+  }
+}
+
+// Ray class for the dot to act like a view ray
+class Ray {
+  constructor (x, y, angle, color) {
     this.x = x;
     this.y = y;
-    this.size = size;
+    this.a = angle;
+    this.dx = Math.cos(this.a) + this.x;
+    this.dy = Math.sin(this.a) + this.y;
     this.color = color;
-    this.render = render;
-    this.speed = 1;
+    this.width = 2;
+  }
+  
+  draw(canvas, ctx) {
+    // draw the individual ray
+    let oldWidth = ctx.lineWidth;
+    ctx.lineWidth = this.width;
+    
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y);
+    ctx.lineTo(this.dx, this.dy);
+    ctx.strokeStyle = this.color;
+    ctx.stroke();
+    ctx.closePath();
+  }
+  
+  update(canvas) {}
+  
+  rayAt(x3, x4, y3, y4) {
+    // initialize variables
+    let den, t, u;
+    
+    // update the current directions 
+    this.dx = Math.cos(this.a) + this.x;
+    this.dy = Math.sin(this.a) + this.y;
+    
+    // the math used to find the point
+    den = ((this.x - this.dx) * (y3 - y4)) - ((this.y - this.dy) * (x3 - x4));
+    if (den) {
+      t = ((this.x - x3) * (y3 - y4)) - ((this.y - y3) * (x3 - x4));
+      t /= den;
+      u = -1 * (((this.x - this.dx) * (this.y - y3)) - ((this.y - this.dy) * (this.x - x3)));
+      u /= den;
+      
+      // verify it
+      if ((0 <= u && u <= 1) && 0 <= t) 
+        return [this.x + (t * (this.dx - this.x)), this.y + (t * (this.dy - this.y))];
+    }
+    return null;
+  }
+  
+  rayLength() {
+    // initialize variables
+    let a = (this.x - this.dx);
+    let b = (this.y - this.dy);
+    
+    // find the distance between the two points to find the shortest one
+    return Math.round(Math.sqrt( a*a + b*b ));
+  }
+  
+  rayWalls(walls) {
+    // initialize needed variables
+    let d, x_temp, y_temp;
+    let point = [];
+    let shortest = 10000;
+    
+    // loop through walls to find intersecting lines
+    for (let i = 0; i < walls.length; ++i) {
+      
+      // get the point at which the ray hits the wall
+      point = this.rayAt(walls[i].x1, walls[i].x2, walls[i].y1, walls[i].y2);
+        
+      // verify it
+      if (point != null) {
+        this.dx = point[0];
+        this.dy = point[1];
+        
+        // get the current ray's line length
+        d = this.rayLength();
+        
+        // keep record of the shortest path
+        if (d < shortest) {
+          shortest = d;
+          x_temp = this.dx;
+          y_temp = this.dy;
+        }
+      }
+    }
+    // set cords to the closest wall
+    this.dx = x_temp;
+    this.dy = y_temp;
   }
 }
 
 
-// ray
-class Ray {
-  constructor (x1, y1, rotate, color) {
-    this.x1 = x1;
-    this.y1 = y1;
-    this.x2 = 0;
-    this.y2 = 0;
-    this.rotate = rotate;
+// Dot class to represent a player
+class Dot {
+  constructor(x = 0, y = 0, size = 10, color = 'red') {
+    // validating and initializing variables
+    if (size < 0)
+      throw new Error('cannot set dot size below zero');
+    this.r = size;
+
+    // validate the given color
+    let style = new Option().style;
+    style.color = color;
+    if (style.color == '')
+      throw new Error('Invalid background color');
     this.color = color;
+
+    this.x = x;
+    this.y = y;
+    this.a = Math.PI;
+    this.fov = Math.PI/2;
+    this.render = 50;
+    this.speed = 1;
+    this.rays = [];
+    this.rayColor = 'black';
+    this.move = [false, false, false, false];
+  }
+  
+  draw(canvas, ctx) {
+    // draw the rays on the player
+    for (let i = 0; i < this.rays.length; ++i) 
+      this.rays[i].draw(canvas, ctx);
+    
+    // draw the dot itself
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
+    ctx.fillStyle = this.color;
+    ctx.fill();
+  }
+  
+  update(canvas) {
+    this.movement();
+    for (let i = 0; i < this.rays.length; ++i) {
+      this.rays[i].x = this.x;
+      this.rays[i].y = this.y;
+      this.rays[i].update(canvas);
+    }
+  }
+  
+  setup(canvas, ctx) {
+    // setting up the dot's view range
+    let rangeStart = -1*this.fov/2 + this.a;
+    let rangeEnd = this.fov/2 + this.a;
+    
+    // setting up the dot's rays
+    let a;
+    for (a = rangeStart; a < rangeEnd; a += (Math.PI/16))
+      this.rays[this.rays.length] = new Ray(this.x, this.y, a, this.rayColor);
+    // add the last ray
+    this.rays.push(new Ray(this.x, this.y, a, this.rayColor));
+    
+    // draw the dot's center 
+    this.rays.push(new Ray(this.x, this.y, (rangeStart + rangeEnd)/2, 'red'));
+  }
+  
+  movement() {
+    if (this.move[0] == true)
+      this.x -= this.speed;
+    if (this.move[1] == true)
+      this.y -= this.speed;
+    if (this.move[2] == true)
+      this.x += this.speed;
+    if (this.move[3] == true)
+      this.y += this.speed;
+  }
+  
+  detectWall(...walls) {
+    for (let i = 0; i < this.rays.length; ++i) 
+      this.rays[i].rayWalls(walls);
   }
 }
 
 
 // wall
 class Wall {
-  constructor(color, x1, y1, x2, y2) {
+  constructor(x1, y1, x2, y2, color) {
     this.color = color;
     this.x1 = x1;
     this.y1 = y1;
     this.x2 = x2;
     this.y2 = y2;
   }
+  
+  draw(canvas, ctx) {
+    ctx.beginPath();
+    ctx.moveTo(this.x1, this.y1);
+    ctx.lineTo(this.x2, this.y2);
+    ctx.strokeStyle = this.color;
+    ctx.stroke();
+  }
 }
 
-
-
-
-// global variables
-  // canvas
-const canvas = document.getElementById("cvs");
-const ctx = canvas.getContext("2d");
+let canvas = new CanvasLoop('cvs');
+canvas.setSize(500, 500);
+let dot = new Dot(canvas.w/2, canvas.h/2);
 const walls = [];
-const player = new Player();
-const rays = [];
+walls.push(new Wall(100, 100, 200, 100, 'black'));
+walls.push(new Wall(200, 100, 200, 150, 'black'));
+walls.push(new Wall(200, 150, 100, 150, 'black'));
+walls.push(new Wall(100, 150, 100, 100, 'black'));
+
+walls.push(new Wall(10, 10, canvas.w-10, 10, 'black'));
+walls.push(new Wall(canvas.w-10, 10, canvas.w-10, canvas.h-10, 'black'));
+//walls.push(new Wall(canvas.w-10, canvas.h-10, 10, canvas.h-10, 'black'));
+walls.push(new Wall(10, canvas.h-10, 10, 10, 'black'));
+
+walls.push(new Wall(100, 200, 100, canvas.h-100, 'black'));
+walls.push(new Wall(100, 200, canvas.w-200, canvas.h-100, 'black'));
+
+
+// for the ray casting
+let ray_cast = new CanvasLoop('rays');
+ray_cast.setBackground('black');
+
 
 // controls
-const movementSet = [false, false, false, false];
 document.addEventListener("keydown", keyDownHandler, false);
 function keyDownHandler(e) {
+  // constrols for the dot
   i = e.keyCode - 37;
   if (i >= 0 && i <= 3) 
-    movementSet[i] = true;
+    dot.move[i] = true;
 }
 document.addEventListener("keyup", keyUpHandler, false);
 function keyUpHandler(e) {
+  // constrols for the dot
   i = e.keyCode - 37;
   if (i >= 0 && i <= 3) 
-    movementSet[i] = false;
-}
-
-// background() function to set canvas color
-const background = (color) => {
-  ctx.fillStyle = color;
-  ctx.fillRect(-canvas.width, -canvas.height, canvas.width*2, canvas.height*2);
-}
-
-// setSize(), set canvas size
-function setSize(x, y) {
-  ctx.canvas.width = x;
-  ctx.canvas.height = y;
+    dot.move[i] = false;
 }
 
 
-// returns a random int between the min and max
-function getRndInt(min, max)
-{
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+canvas.setup(dot);
+window.requestAnimationFrame(loop);
 
-// populate the canvase with walls
-function generateWalls(num, width, height, walls) {
-  let x1, y1, x2, y2;
-  for (let i = 0; i < num; ++i) {
-    x1 = getRndInt(0, width);
-    y1 = getRndInt(0, height);
-    x2 = getRndInt(0, width);
-    y2 = getRndInt(0, height);
-    walls[walls.length] = new Wall("white", x1, y1, x2, y2);
-  }
-}
-
-// detects walls
-function detectWall(walls, rays) {
-  let t, u;
-  // check each wall
-  for (let i = 0; i < walls.length; ++i) {
-    
-  }
-}
-
-// setup the player attributes
-function playerSetup(player) {
-  player.x = canvas.width/2;
-  player.y = canvas.height/2;
-  player.size = 5;
-  player.render = 200;
-  player.color = 'red';
-  player.speed = 1.2;
+function loop() {
+  canvas.clear();
+  canvas.draw(dot, ...walls);
+  //dot.movement();
+  canvas.update(dot);
+  //canvas.draw(ray);
+  dot.detectWall(...walls);
   
-  // setting up the player's rays
-  for (let i = 0; i < (2*Math.PI); i += (Math.PI/200)) {
-    rays[rays.length] = new Ray(player.x, player.y, i, 'gold');
-  }
-}
-
-
-
-// Setup (permanant structures for draw)
-function setup() {
-  // canvas size
-  setSize(500, 500);
-  // walls generation
-  generateWalls(10, canvas.width, canvas.height, walls);
-  // spawn in player
-  playerSetup(player);
   
-  // start the first frame request
-  window.requestAnimationFrame(draw);
-}
-
-let secondsPassed, oldTimeStamp, fps;
-// Draw
-function draw(timeStamp) {
-  // fps
-  secondsPassed = (timeStamp - oldTimeStamp) / 1000;
-  oldTimeStamp = timeStamp;
-  fps = Math.round(1 / secondsPassed);
-  //console.log(fps+" fps");
+  ray_cast.clear();
   
-  // clear()
-  background("black");
-
-  // draw the walls
-  for (let i = 0; i < walls.length; ++i) {
-    ctx.beginPath();
-    ctx.moveTo(walls[i].x1, walls[i].y1);
-    ctx.lineTo(walls[i].x2, walls[i].y2);
-    ctx.strokeStyle = walls[i].color;
-    ctx.lineWidth = 5;
-    ctx.stroke();
-  }
-  
-  // move the player also
-  //player.movement(movementSet);
-  if (movementSet[0] == true)
-    player.x -= player.speed;
-  if (movementSet[1] == true)
-    player.y -= player.speed;
-  if (movementSet[2] == true)
-    player.x += player.speed;
-  if (movementSet[3] == true)
-    player.y += player.speed;
-  
-  // draw the rays from the player's position
-  ctx.lineWidth = 2;
-  for (let i = 0; i < rays.length; ++i) {
-    ctx.beginPath();
-    ctx.moveTo(rays[i].x1, rays[i].y1);
-    ctx.lineTo(rays[i].x2, rays[i].y2);
-    ctx.strokeStyle = rays[i].color;
-    ctx.stroke();
-    ctx.closePath();
-  }
-  //move the rays
-  var opp = 0;
-  var adj = 0;
-  for (let i = 0; i < rays.length; ++i) {
-    rays[i].x1 = player.x;
-    rays[i].y1 = player.y;
-    adj = player.x + (Math.cos(rays[i].rotate) * player.render);
-    opp = player.y + (Math.sin(rays[i].rotate) * player.render);
-    rays[i].x2 = adj;
-    rays[i].y2 = opp;
-  }
-  
-  //block the rays with detection
-  var t, u, x1, x2, x3, x4, y1, y2, y3, y4;
-  var p = [0, 0];
-  for (let i = 0; i < rays.length; ++i) {
-    for (let j = 0; j < walls.length; ++j) {
-      x1 = rays[i].x1;
-      x2 = rays[i].x2;
-      y1 = rays[i].y1;
-      y2 = rays[i].y2;
-      x3 = walls[j].x1;
-      x4 = walls[j].x2;
-      y3 = walls[j].y1;
-      y4 = walls[j].y2;
-      
-      t = ((x1 - x3) * (y3 - y4)) - ((y1 - y3) * (x3 - x4));
-      t /= ((x1 - x2) * (y3 - y4)) - ((y1 - y2) * (x3 - x4));
-      
-      u = -1 * (((x1 - x2) * (y1 - y3)) - ((y1 - y2) * (x1 - x3)));
-      u /= ((x1 - x2) * (y3 - y4)) - ((y1 - y2) * (x3 - x4));
-      
-      if ( (0 <= t && t <= 1) && (0 <= u && u <= 1)) {
-        rays[i].x2 = x1 + (t * (x2 - x1));
-        rays[i].y2 = y1 + (t * (y2 - y1));
-      }
-    }
-  }
-  // draw the player
-  ctx.beginPath();
-  ctx.arc(player.x, player.y, player.size, 0, 2*Math.PI);
-  ctx.fillStyle = player.color;
-  ctx.fill();
   
   // keep requesting new frames
-  window.requestAnimationFrame(draw);
+  window.requestAnimationFrame(loop);
 }
-
-// The main output
-setup();
-
-// old way of frames
-//var interval = setInterval(draw, 10);
 
