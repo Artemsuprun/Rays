@@ -94,7 +94,7 @@ class CanvasLoop {
 
 // Ray class for the dot to act like a view ray
 class Ray {
-  constructor (x, y, angle, color) {
+  constructor (x, y, angle, offset, color) {
     this.x = x;
     this.y = y;
     this.a = angle;
@@ -102,6 +102,7 @@ class Ray {
     this.dy = Math.sin(this.a) + this.y;
     this.color = color;
     this.width = 2;
+    this.offset = offset;
   }
   
   draw(canvas, ctx) {
@@ -153,7 +154,9 @@ class Ray {
   
   rayWalls(walls) {
     // initialize needed variables
-    let d, x_temp, y_temp;
+    let d;
+    let x_temp = this.x;
+    let y_temp = this.y;
     let point = [];
     let shortest = 10000;
     
@@ -203,9 +206,9 @@ class Dot {
 
     this.x = x;
     this.y = y;
-    this.a = Math.PI;
-    this.fov = Math.PI/2;
-    this.render = 50;
+    this.a = Math.PI/2;
+    this.fov = Math.PI/4;
+    this.render = 300;
     this.speed = 1;
     this.rays = [];
     this.rayColor = 'black';
@@ -230,6 +233,7 @@ class Dot {
       this.rays[i].x = this.x;
       this.rays[i].y = this.y;
       this.rays[i].update(canvas);
+      this.rays[i].a = this.a - this.rays[i].offset;
     }
   }
   
@@ -240,29 +244,58 @@ class Dot {
     
     // setting up the dot's rays
     let a;
-    for (a = rangeStart; a < rangeEnd; a += (Math.PI/16))
-      this.rays[this.rays.length] = new Ray(this.x, this.y, a, this.rayColor);
-    // add the last ray
-    this.rays.push(new Ray(this.x, this.y, a, this.rayColor));
-    
-    // draw the dot's center 
-    this.rays.push(new Ray(this.x, this.y, (rangeStart + rangeEnd)/2, 'red'));
+    for (a = rangeStart; a <= rangeEnd; a += (Math.PI/1600)) {
+      if (a == (rangeStart + rangeEnd)/2)
+        this.rays[this.rays.length] = new Ray(this.x, this.y, a, (a - this.a), 'red');
+      else
+        this.rays[this.rays.length] = new Ray(this.x, this.y, a, (a - this.a), this.rayColor);
+    }
   }
   
   movement() {
-    if (this.move[0] == true)
-      this.x -= this.speed;
-    if (this.move[1] == true)
-      this.y -= this.speed;
-    if (this.move[2] == true)
-      this.x += this.speed;
-    if (this.move[3] == true)
-      this.y += this.speed;
+    let dx = Math.cos(this.a);
+    let dy = Math.sin(this.a);
+    if (this.move[0] == true) 
+      this.a -= 0.03;
+    if (this.move[1] == true) {
+      this.x += dx;
+      this.y += dy;
+    }
+    if (this.move[2] == true) 
+      this.a += 0.03;
+    if (this.move[3] == true) {
+      this.x -= dx;
+      this.y -= dy;
+    }
   }
   
   detectWall(...walls) {
     for (let i = 0; i < this.rays.length; ++i) 
       this.rays[i].rayWalls(walls);
+  }
+  
+  scale(num, inMin, inMax, outMin, outMax) {
+    if (num > inMax)
+      num = inMax;
+    return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+  }
+  
+  pov(canvas, ctx) {
+    // initialized variables
+    let d, h;
+    let sceneH = canvas.height;
+    let sceneW = canvas.width;
+    let w = sceneW/this.rays.length;
+    
+    // loop through all rays and draw the wall
+    for (let i = 0; i < this.rays.length; ++i) {
+      // check if there's a ray
+      d = this.rays[i].rayLength();
+      h = this.scale(d, 0, 500, sceneH, 0);
+      d = this.scale(d, 0, this.render, 255, 0);
+      ctx.fillStyle = `rgb(${d}, ${d}, ${d})`;
+      ctx.fillRect(sceneW-(i * w), (sceneH - h)/2, -w, h);
+    }
   }
 }
 
@@ -286,6 +319,7 @@ class Wall {
   }
 }
 
+
 let canvas = new CanvasLoop('cvs');
 canvas.setSize(500, 500);
 let dot = new Dot(canvas.w/2, canvas.h/2);
@@ -297,7 +331,7 @@ walls.push(new Wall(100, 150, 100, 100, 'black'));
 
 walls.push(new Wall(10, 10, canvas.w-10, 10, 'black'));
 walls.push(new Wall(canvas.w-10, 10, canvas.w-10, canvas.h-10, 'black'));
-//walls.push(new Wall(canvas.w-10, canvas.h-10, 10, canvas.h-10, 'black'));
+walls.push(new Wall(canvas.w-10, canvas.h-10, 10, canvas.h-10, 'black'));
 walls.push(new Wall(10, canvas.h-10, 10, 10, 'black'));
 
 walls.push(new Wall(100, 200, 100, canvas.h-100, 'black'));
@@ -332,14 +366,12 @@ window.requestAnimationFrame(loop);
 function loop() {
   canvas.clear();
   canvas.draw(dot, ...walls);
-  //dot.movement();
   canvas.update(dot);
-  //canvas.draw(ray);
   dot.detectWall(...walls);
   
   
   ray_cast.clear();
-  
+  dot.pov(ray_cast.canvas, ray_cast.ctx);
   
   // keep requesting new frames
   window.requestAnimationFrame(loop);
