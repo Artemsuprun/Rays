@@ -1,7 +1,7 @@
 //
 //  File Name:  script.js (for light ray)
 //  Author:     Artem Suprun
-//  Date:       06/14/2022
+//  Date:       08/16/2024
 //  Summary:    A JS script file for the light ray folder, which runs a
 //              program on the javascript canvas.
 //
@@ -30,6 +30,8 @@ class CanvasLoop {
     this.h = this.canvas.height;
   }
   
+  // sets the canvas size to the given parameters.
+  //  will not accept negative values.
   setSize(w, h) {
     // validate the parameters
     if (w < 0 || h < 0)
@@ -43,6 +45,9 @@ class CanvasLoop {
     this.h = this.canvas.height;
   }
   
+  // sets the canvas background. When clear is called, it sets
+  //  this parameter as the background. Will not accept invalid
+  //  forms of colors.
   setBackground(bg) {
     // check if the user wants a background
     if (!bg) {
@@ -68,7 +73,6 @@ class CanvasLoop {
       // fill the background instead of clearing it
       this.ctx.fillStyle = this.bg;
       this.ctx.fillRect(0, 0, this.w, this.h);
-  //ctx.fillRect(-canvas.width, -canvas.height, canvas.width*2, canvas.height*2);
     }
   }
   
@@ -105,6 +109,7 @@ class Ray {
     this.offset = offset;
   }
   
+  // draws the ray onto the given canvas.
   draw(canvas, ctx) {
     // draw the individual ray
     let oldWidth = ctx.lineWidth;
@@ -118,15 +123,18 @@ class Ray {
     ctx.closePath();
   }
   
-  update(canvas) {}
-  
-  rayAt(x3, x4, y3, y4) {
-    // initialize variables
-    let den, t, u;
-    
+  // function updates the ray's variables.
+  update(canvas) {
     // update the current directions 
     this.dx = Math.cos(this.a) + this.x;
     this.dy = Math.sin(this.a) + this.y;
+  }
+  
+  // Function finds the location at which the ray intersepts
+  //  a line. returns the location if found, null otherwise.
+  rayAt(x3, x4, y3, y4) {
+    // initialize variables
+    let den, t, u;
     
     // the math used to find the point
     den = ((this.x - this.dx) * (y3 - y4)) - ((this.y - this.dy) * (x3 - x4));
@@ -143,6 +151,7 @@ class Ray {
     return null;
   }
   
+  // Function returns the ray's length.
   rayLength() {
     // initialize variables
     let a = (this.x - this.dx);
@@ -152,6 +161,9 @@ class Ray {
     return Math.round(Math.sqrt( a*a + b*b ));
   }
   
+  // this function goes through the list of walls to find the closest
+  //  one. When found, it set's the ray's variables to that location.
+  //  (dx and dy are updated in this function)
   rayWalls(walls) {
     // initialize needed variables
     let d;
@@ -208,13 +220,15 @@ class Dot {
     this.y = y;
     this.a = Math.PI/2;
     this.fov = Math.PI/4;
-    this.render = 300;
-    this.speed = 1;
+    this.render = 400;
+    this.speed = 5;
     this.rays = [];
     this.rayColor = 'black';
     this.move = [false, false, false, false];
   }
   
+  // used during the game loop;
+  //  Draw the dot and its rays
   draw(canvas, ctx) {
     // draw the rays on the player
     for (let i = 0; i < this.rays.length; ++i) 
@@ -227,16 +241,25 @@ class Dot {
     ctx.fill();
   }
   
+  // This function is used to update the object's variables
+  //  as it is being drawn, by the draw function.
   update(canvas) {
+    // update the dot's positioning variables
     this.movement();
+    
+    // update the dot's rays
     for (let i = 0; i < this.rays.length; ++i) {
+      // update the rays starting positioning
       this.rays[i].x = this.x;
       this.rays[i].y = this.y;
       this.rays[i].update(canvas);
+      // update the rays angle
       this.rays[i].a = this.a - this.rays[i].offset;
     }
   }
   
+  // A required function that must be used to prepare the
+  //  object before it is drawn.
   setup(canvas, ctx) {
     // setting up the dot's view range
     let rangeStart = -1*this.fov/2 + this.a;
@@ -252,6 +275,8 @@ class Dot {
     }
   }
   
+  // the dot can only move forward and backwards, but can change
+  //  its direction by turning.
   movement() {
     let dx = Math.cos(this.a);
     let dy = Math.sin(this.a);
@@ -269,20 +294,27 @@ class Dot {
     }
   }
   
+  // this function simply calls in the ray's function to calculate the
+  //  distance between the walls passed by the parameter. The ray's auto
+  //  -maticlly update their values.
   detectWall(...walls) {
     for (let i = 0; i < this.rays.length; ++i) 
       this.rays[i].rayWalls(walls);
   }
   
+  // this function acts similar to a map function. The input value is
+  //  scaled to fit within its new setting.
   scale(num, inMin, inMax, outMin, outMax) {
     if (num > inMax)
       num = inMax;
     return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
   }
   
+  // draws the 3d representation of the dot's fov
+  //  with the use of ray casting.
   pov(canvas, ctx) {
     // initialized variables
-    let d, h;
+    let d, h, a;
     let sceneH = canvas.height;
     let sceneW = canvas.width;
     let w = sceneW/this.rays.length;
@@ -291,6 +323,8 @@ class Dot {
     for (let i = 0; i < this.rays.length; ++i) {
       // check if there's a ray
       d = this.rays[i].rayLength();
+      a = this.rays[i].a - this.a;
+      d *= Math.cos(a);
       h = this.scale(d, 0, 500, sceneH, 0);
       d = this.scale(d, 0, this.render, 255, 0);
       ctx.fillStyle = `rgb(${d}, ${d}, ${d})`;
@@ -310,6 +344,7 @@ class Wall {
     this.y2 = y2;
   }
   
+  // draws the 2d representation of the wall onto the canvas.
   draw(canvas, ctx) {
     ctx.beginPath();
     ctx.moveTo(this.x1, this.y1);
@@ -320,6 +355,7 @@ class Wall {
 }
 
 
+// Variable initialization
 let canvas = new CanvasLoop('cvs');
 canvas.setSize(500, 500);
 let dot = new Dot(canvas.w/2, canvas.h/2);
@@ -343,7 +379,7 @@ let ray_cast = new CanvasLoop('rays');
 ray_cast.setBackground('black');
 
 
-// controls
+// GLOBAL controls
 document.addEventListener("keydown", keyDownHandler, false);
 function keyDownHandler(e) {
   // constrols for the dot
@@ -360,16 +396,19 @@ function keyUpHandler(e) {
 }
 
 
+// setup
 canvas.setup(dot);
 window.requestAnimationFrame(loop);
 
+// game loop
 function loop() {
+  // setting up the dot and walls
   canvas.clear();
   canvas.draw(dot, ...walls);
   canvas.update(dot);
   dot.detectWall(...walls);
   
-  
+  // the visual pov of the dot when it detects the walls
   ray_cast.clear();
   dot.pov(ray_cast.canvas, ray_cast.ctx);
   
