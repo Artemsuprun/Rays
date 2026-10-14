@@ -55,3 +55,6 @@ Potential improvements include:
 - Implementing automated tests for raycasting calculations.
 - Adding collision detection and more advanced gameplay mechanics.
 
+## License
+
+This project is licensed under the Apache 2.0 license.
