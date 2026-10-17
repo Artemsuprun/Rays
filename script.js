@@ -1,418 +1,592 @@
 //
 //  File Name:  script.js (for light ray)
 //  Author:     Artem Suprun
-//  Date:       08/16/2024
+//  Date:       08/16/2024 (last modified 10/17/2026)
 //  Summary:    A JS script file for the light ray folder, which runs a
 //              program on the javascript canvas.
 //
 
+// Requires two canvas elements in your HTML:
+// <canvas id="cvs"></canvas>   <!-- 2D map -->
+// <canvas id="rays"></canvas>  <!-- 3D view -->
 
-// GameLoop
-class CanvasLoop {
-  // public class functions: 
-  constructor(canvas, context = '2d') {
-    // variables 
-    this.canvas = null;
-    this.ctx = null;
-    
-    // initializing canvas and context
-    this.canvas = document.getElementById(canvas);
-    if (!(this.canvas))
-      throw new Error('Failed to get canvas ID');
-    
-    this.ctx = this.canvas.getContext(context);
-    if (!(this.ctx))
-      throw new Error('Failed to get the get canvas context/context does not exist');
-    
-    // initialize public variables
-    this.bg = null;
-    this.w = this.canvas.width;
-    this.h = this.canvas.height;
+
+// Game
+// Coordinates input, updates, rendering, and the game loop.
+class Game {
+  constructor(player, world, raycaster, mapView, sceneView) {
+    this.player = player;
+    this.world = world;
+    this.raycaster = raycaster;
+    this.mapView = mapView;
+    this.sceneView = sceneView;
+
+    this.keys = new Set();
+    this.handledKeys = new Set([
+      "arrowleft", "arrowright", "arrowup", "arrowdown",
+      "w", "a", "s", "d"
+    ]);
+
+    this.lastTimestamp = null;
+    this.animationFrameId = null;
+    this.isRunning = false;
+
+    // Create the callback once so it can also be cancelled.
+    this.boundGameLoop = this.gameLoop.bind(this);
+
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
+    this.clearKeys = this.clearKeys.bind(this);
+
+    this.setupInput();
   }
-  
-  // sets the canvas size to the given parameters.
-  //  will not accept negative values.
-  setSize(w, h) {
-    // validate the parameters
-    if (w < 0 || h < 0)
-      throw new Error('invalid canvas size');
-    
-    // setting the values
-    this.canvas.width = w;
-    this.canvas.height = h;
-    
-    this.w = this.canvas.width;
-    this.h = this.canvas.height;
+
+  // Sets up event listeners for keyboard input.
+  setupInput() {
+    document.addEventListener("keydown", this.handleKeyDown);
+    document.addEventListener("keyup", this.handleKeyUp);
+    window.addEventListener("blur", this.clearKeys);
   }
-  
-  // sets the canvas background. When clear is called, it sets
-  //  this parameter as the background. Will not accept invalid
-  //  forms of colors.
-  setBackground(bg) {
-    // check if the user wants a background
-    if (!bg) {
-      this.bg = null;
+
+  // Handles keydown events and adds the key to the set of pressed keys.
+  handleKeyDown(event) {
+    const key = event.key.toLowerCase();
+
+    if (!this.handledKeys.has(key)) return;
+
+    event.preventDefault();
+    this.keys.add(key);
+  }
+
+  // Handles keyup events and removes the key from the set of pressed keys.
+  handleKeyUp(event) {
+    const key = event.key.toLowerCase();
+
+    if (!this.handledKeys.has(key)) return;
+
+    event.preventDefault();
+    this.keys.delete(key);
+  }
+
+  // Clears all pressed keys, typically called when the window loses focus.
+  clearKeys() {
+    this.keys.clear();
+  }
+
+  // Starts the game loop.
+  start() {
+    // Prevent accidentally starting multiple game loops.
+    if (this.isRunning) return;
+
+    this.isRunning = true;
+    this.lastTimestamp = null;
+    this.animationFrameId = requestAnimationFrame(this.boundGameLoop);
+  }
+
+  // Stops the game loop and clears input state.
+  stop() {
+    this.isRunning = false;
+
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
-    else {
-      // validate the given color
-      let style = new Option().style;
-      style.color = bg;
-      if (style.color == '')
-        throw new Error('Invalid background color');
-      
-      this.bg = bg;
+
+    this.clearKeys();
+    this.lastTimestamp = null;
+  }
+
+  // The main game loop, called once per animation frame.
+  gameLoop(timestamp) {
+    if (!this.isRunning) return;
+
+    // Calculate the time delta since the last frame in seconds.
+    let dt = 0;
+    if (this.lastTimestamp !== null) {
+      const elapsedSeconds = (timestamp - this.lastTimestamp) / 1000;
+
+      // Avoid large movement jumps after a stalled frame.
+      dt = Math.min(elapsedSeconds, 0.05);
     }
+    this.lastTimestamp = timestamp;
+
+    // Update game state and render the scene.
+    this.update(dt);
+    this.render();
+
+    if (this.isRunning) 
+      this.animationFrameId = requestAnimationFrame(this.boundGameLoop);
   }
-  
-  // this function clears up the frame.
-  clear() {
-    if (!this.bg) {
-      this.ctx.clearRect(0, 0, this.w, this.h);
-    }
-    else {
-      // fill the background instead of clearing it
-      this.ctx.fillStyle = this.bg;
-      this.ctx.fillRect(0, 0, this.w, this.h);
-    }
+
+  // Updates the game state based on input and elapsed time.
+  update(dt) {
+    this.player.update(dt, this.keys, this.world);
   }
-  
-  // this function is used to setup objects before the loop starts,
-  //   such as generating walls, etc..
-  setup(...args) {
-    // setup the objects
-    for (let arg of args)
-      arg.setup(this.canvas, this.ctx);
+
+  // Renders the 3D view and the 2D map.
+  render() {
+    this.sceneView.clear();
+    this.raycaster.render3D(this.sceneView.ctx, this.sceneView.width, this.sceneView.height);
+    this.drawMap();
   }
-  
-  // this function is used to draw objects into the canvas during looping.
-  draw(...args) {
-    for (let arg of args) 
-      arg.draw(this.canvas, this.ctx);
+
+  // Draws the 2D map, including walls, rays, and the player.
+  drawMap() {
+    this.mapView.clear();
+    const ctx = this.mapView.ctx;
+    this.world.draw(ctx);
+    this.raycaster.drawMapRays(ctx);
+    this.player.draw(ctx);
   }
-  
-  update(...args) {
-    for (let arg of args)
-      arg.update(this.canvas)
+
+  // Cleans up event listeners and stops the game loop.
+  destroy() {
+    this.stop();
+
+    document.removeEventListener(
+      "keydown", this.handleKeyDown
+    );
+    document.removeEventListener(
+      "keyup", this.handleKeyUp
+    );
+    window.removeEventListener("blur", this.clearKeys);
   }
 }
 
-// Ray class for the dot to act like a view ray
-class Ray {
-  constructor (x, y, angle, offset, color) {
-    this.x = x;
-    this.y = y;
-    this.a = angle;
-    this.dx = Math.cos(this.a) + this.x;
-    this.dy = Math.sin(this.a) + this.y;
-    this.color = color;
-    this.width = 2;
-    this.offset = offset;
+
+// CanvasView
+// Manages a canvas, its drawing context, and its background.
+class CanvasView {
+  constructor(id, background = null, width = 500, height = 500) {
+    this.canvas = document.getElementById(id);
+
+    if (!this.canvas) 
+      throw new Error(`Canvas element "${id}" was not found.`);
+
+    this.ctx = this.canvas.getContext("2d");
+
+    if (!this.ctx) 
+      throw new Error(`Could not create a 2D context for "${id}".`);
+
+    this.background = background;
+    this.resize(width, height);
   }
-  
-  // draws the ray onto the given canvas.
-  draw(canvas, ctx) {
-    // draw the individual ray
-    let oldWidth = ctx.lineWidth;
-    ctx.lineWidth = this.width;
-    
-    ctx.beginPath();
-    ctx.moveTo(this.x, this.y);
-    ctx.lineTo(this.dx, this.dy);
-    ctx.strokeStyle = this.color;
-    ctx.stroke();
-    ctx.closePath();
+
+  // Resizes the canvas and updates its width and height properties.
+  resize(width, height) {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+      throw new RangeError("Canvas dimensions must be positive numbers.");
+
+    this.canvas.width = width;
+    this.canvas.height = height;
+
+    this.width = width;
+    this.height = height;
   }
-  
-  // function updates the ray's variables.
-  update(canvas) {
-    // update the current directions 
-    this.dx = Math.cos(this.a) + this.x;
-    this.dy = Math.sin(this.a) + this.y;
-  }
-  
-  // Function finds the location at which the ray intersepts
-  //  a line. returns the location if found, null otherwise.
-  rayAt(x3, x4, y3, y4) {
-    // initialize variables
-    let den, t, u;
-    
-    // the math used to find the point
-    den = ((this.x - this.dx) * (y3 - y4)) - ((this.y - this.dy) * (x3 - x4));
-    if (den) {
-      t = ((this.x - x3) * (y3 - y4)) - ((this.y - y3) * (x3 - x4));
-      t /= den;
-      u = -1 * (((this.x - this.dx) * (this.y - y3)) - ((this.y - this.dy) * (this.x - x3)));
-      u /= den;
-      
-      // verify it
-      if ((0 <= u && u <= 1) && 0 <= t) 
-        return [this.x + (t * (this.dx - this.x)), this.y + (t * (this.dy - this.y))];
+
+  // Clears the canvas, filling it with the background color if specified.
+  clear() {
+    if (this.background !== null) {
+      this.ctx.fillStyle = this.background;
+      this.ctx.fillRect(0, 0, this.width, this.height);
+    } else {
+      this.ctx.clearRect(0, 0, this.width, this.height);
     }
-    return null;
   }
-  
-  // Function returns the ray's length.
-  rayLength() {
-    // initialize variables
-    let a = (this.x - this.dx);
-    let b = (this.y - this.dy);
-    
-    // find the distance between the two points to find the shortest one
-    return Math.round(Math.sqrt( a*a + b*b ));
+}
+
+
+// Raycaster
+// Casts rays against the world and renders the 3D view.
+class Raycaster {
+  constructor(player, world, options = {}) {
+    this.player = player;
+    this.world = world;
+
+    this.maxDistance = options.maxDistance ?? 800;
+    this.rayCount = options.rayCount ?? 320;
+
+    if (!Number.isFinite(this.maxDistance) || this.maxDistance <= 0)
+      throw new RangeError("maxDistance must be positive.");
+
+    if (!Number.isInteger(this.rayCount) || this.rayCount <= 0) 
+      throw new RangeError("rayCount must be a positive integer.");
+
+    this.lastHits = [];
   }
-  
-  // this function goes through the list of walls to find the closest
-  //  one. When found, it set's the ray's variables to that location.
-  //  (dx and dy are updated in this function)
-  rayWalls(walls) {
-    // initialize needed variables
-    let d;
-    let x_temp = this.x;
-    let y_temp = this.y;
-    let point = [];
-    let shortest = 10000;
-    
-    // loop through walls to find intersecting lines
-    for (let i = 0; i < walls.length; ++i) {
-      
-      // get the point at which the ray hits the wall
-      point = this.rayAt(walls[i].x1, walls[i].x2, walls[i].y1, walls[i].y2);
-        
-      // verify it
-      if (point != null) {
-        this.dx = point[0];
-        this.dy = point[1];
-        
-        // get the current ray's line length
-        d = this.rayLength();
-        
-        // keep record of the shortest path
-        if (d < shortest) {
-          shortest = d;
-          x_temp = this.dx;
-          y_temp = this.dy;
-        }
+
+  // Finds the closest wall intersection along one ray.
+  castRay(angle) {
+    const px = this.player.x;
+    const py = this.player.y;
+
+    const rayX = Math.cos(angle);
+    const rayY = Math.sin(angle);
+
+    let closestHit = null; // Stores the closest intersection found so far.
+
+    // Check each wall for intersection with the ray.
+    for (const wall of this.world.walls) {
+      const wallX = wall.x2 - wall.x1;
+      const wallY = wall.y2 - wall.y1;
+
+      const offsetX = wall.x1 - px;
+      const offsetY = wall.y1 - py;
+
+      // 2D cross product.
+      const denominator = rayX * wallY - rayY * wallX;
+
+      // Parallel lines do not have a unique intersection.
+      if (Math.abs(denominator) < 1e-9) 
+        continue;
+
+      const distance = (offsetX * wallY - offsetY * wallX) / denominator;
+
+      const wallPosition = (offsetX * rayY - offsetY * rayX) / denominator;
+
+      // distance: position along the ray.
+      // wallPosition: position along the wall segment.
+      if (distance < 0 || distance > this.maxDistance || wallPosition < 0 || wallPosition > 1) 
+        continue;
+
+      // If this intersection is closer than any previously found, store it.
+      if (closestHit === null || distance < closestHit.distance) {
+        closestHit = {
+          x: px + rayX * distance,
+          y: py + rayY * distance,
+          distance,
+          wall
+        };
       }
     }
-    // set cords to the closest wall
-    this.dx = x_temp;
-    this.dy = y_temp;
+
+    return closestHit;
+  }
+
+  // Casts rays across the player's field of view.
+  castAll() {
+    const hits = [];
+    const startAngle = this.player.angle - this.player.fov / 2;
+    const angleStep = this.player.fov / this.rayCount;
+
+    // Cast each ray and store the results.
+    for (let i = 0; i < this.rayCount; i++) {
+      const angle = startAngle + (i + 0.5) * angleStep;
+
+      hits.push({
+        angle,
+        hit: this.castRay(angle)
+      });
+    }
+
+    this.lastHits = hits;
+    return hits;
+  }
+
+  // Draws the rays on the 2D map for visualization.
+  drawMapRays(ctx) {
+    ctx.save();
+
+    ctx.strokeStyle = "rgba(255, 50, 50, 0.20)";
+    ctx.lineWidth = 2;
+
+    // Draw each ray from the player to its endpoint.
+    for (const { angle, hit } of this.lastHits) {
+      let endX;
+      let endY;
+
+      if (hit) {
+        // If the ray hit a wall, use the hit position.
+        endX = hit.x;
+        endY = hit.y;
+      } else {
+        // If the ray hit nothing, extend it to its maximum distance.
+        endX = this.player.x + Math.cos(angle) * this.maxDistance;
+        endY = this.player.y + Math.sin(angle) * this.maxDistance;
+      }
+
+      // Draw a ray from the player to its endpoint.
+      ctx.beginPath();
+      ctx.moveTo(this.player.x, this.player.y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // Renders the 3D view based on the rays cast and their intersections with walls.
+  render3D(ctx, width, height) {
+    this.drawBackground(ctx, width, height);
+
+    const hits = this.castAll();
+    const columnWidth = width / hits.length;
+    
+    const projectionPlane = width / (2 * Math.tan(this.player.fov / 2));
+    const wallWorldHeight = 15;
+
+    // Draw each vertical slice of the 3D view.
+    for (const [index, ray] of hits.entries()) {
+      const { angle, hit } = ray;
+
+      if (!hit) continue;
+
+      const correctedDistance = Math.max(
+        0.001,
+        hit.distance * Math.cos(angle - this.player.angle)
+      );
+
+      const wallHeight = Math.min(
+        height * 2,
+        wallWorldHeight * projectionPlane / correctedDistance
+      );
+
+      const top = (height - wallHeight) / 2;
+
+      const brightness = this.getWallBrightness(
+        hit.wall,
+        correctedDistance
+      );
+
+      ctx.fillStyle =`rgb(${brightness}, ${brightness}, ${brightness})`;
+      ctx.fillRect(
+        index * columnWidth,
+        top,
+        Math.ceil(columnWidth) + 1,
+        wallHeight
+      );
+    }
+  }
+
+  // Draws the ceiling and floor of the 3D view.
+  drawBackground(ctx, width, height) {
+    // Ceiling.
+    ctx.fillStyle = "#252932";
+    ctx.fillRect(0, 0, width, height / 2);
+
+    // Floor.
+    ctx.fillStyle = "#4b4a45";
+    ctx.fillRect(0, height / 2, width, height / 2);
+  }
+
+  // Returns a brightness value for a wall based on its distance and orientation.
+  getWallBrightness(wall, distance) {
+    const shade = Math.max(
+      35,
+      Math.min(255, 255 * (1 - distance / this.maxDistance))
+    );
+
+    // Give horizontal and vertical walls different shading.
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+
+    const isVertical = Math.abs(dx) < Math.abs(dy);
+
+    return Math.round(isVertical ? shade : shade * 0.78);
   }
 }
 
 
-// Dot class to represent a player
-class Dot {
-  constructor(x = 0, y = 0, size = 10, color = 'red') {
-    // validating and initializing variables
-    if (size < 0)
-      throw new Error('cannot set dot size below zero');
-    this.r = size;
+// World
+// Owns the walls and handles world-level collision checks.
+class World {
+  constructor(walls) {
+    this.walls = walls;
+  }
 
-    // validate the given color
-    let style = new Option().style;
-    style.color = color;
-    if (style.color == '')
-      throw new Error('Invalid background color');
-    this.color = color;
+  // Draws all walls in the world.
+  draw(ctx) {
+    for (const wall of this.walls) {
+      wall.draw(ctx);
+    }
+  }
 
+  // Returns true if a circle at (x, y) with the given radius collides with any wall.
+  collidesWithWalls(x, y, radius) {
+    for (const wall of this.walls) {
+      const distance = distancePointToSegment(
+        x, y,
+        wall.x1, wall.y1,
+        wall.x2, wall.y2
+      );
+
+      if (distance < radius) 
+        return true;
+    }
+
+    return false;
+  }
+}
+
+
+// Player
+// Stores player position, orientation, and movement behavior.
+class Player {
+  constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.a = Math.PI/2;
-    this.fov = Math.PI/4;
-    this.render = 400;
-    this.speed = 5;
-    this.rays = [];
-    this.rayColor = 'black';
-    this.move = [false, false, false, false];
+
+    this.radius = 5;
+    this.angle = -Math.PI / 2;
+    this.fov = Math.PI / 3;
+
+    this.speed = 40;
+    this.turnSpeed = 2.2;
   }
-  
-  // used during the game loop;
-  //  Draw the dot and its rays
-  draw(canvas, ctx) {
-    // draw the rays on the player
-    for (let i = 0; i < this.rays.length; ++i) 
-      this.rays[i].draw(canvas, ctx);
-    
-    // draw the dot itself
+
+  // Draws the player on the 2D map.
+  draw(ctx) {
+    ctx.save();
+
+    // Player body.
+    ctx.fillStyle = "red";
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
-    ctx.fillStyle = this.color;
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
+
+    // Direction indicator.
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y);
+    ctx.lineTo(
+      this.x + Math.cos(this.angle) * 22,
+      this.y + Math.sin(this.angle) * 22
+    );
+    ctx.stroke();
+
+    ctx.restore();
   }
-  
-  // This function is used to update the object's variables
-  //  as it is being drawn, by the draw function.
-  update(canvas) {
-    // update the dot's positioning variables
-    this.movement();
-    
-    // update the dot's rays
-    for (let i = 0; i < this.rays.length; ++i) {
-      // update the rays starting positioning
-      this.rays[i].x = this.x;
-      this.rays[i].y = this.y;
-      this.rays[i].update(canvas);
-      // update the rays angle
-      this.rays[i].a = this.a - this.rays[i].offset;
+
+  // Updates the player's position and orientation based on input.
+  update(dt, keys, world) {
+    this.updateRotation(dt, keys);
+    this.updateMovement(dt, keys, world);
+  }
+
+  // Updates the player's orientation based on input.
+  updateRotation(dt, keys) {
+    if (keys.has("arrowleft") || keys.has("a")) {
+      this.angle -= this.turnSpeed * dt;
+    }
+
+    if (keys.has("arrowright") || keys.has("d")) {
+      this.angle += this.turnSpeed * dt;
     }
   }
-  
-  // A required function that must be used to prepare the
-  //  object before it is drawn.
-  setup(canvas, ctx) {
-    // setting up the dot's view range
-    let rangeStart = -1*this.fov/2 + this.a;
-    let rangeEnd = this.fov/2 + this.a;
-    
-    // setting up the dot's rays
-    let a;
-    for (a = rangeStart; a <= rangeEnd; a += (Math.PI/1600)) {
-      if (a == (rangeStart + rangeEnd)/2)
-        this.rays[this.rays.length] = new Ray(this.x, this.y, a, (a - this.a), 'red');
-      else
-        this.rays[this.rays.length] = new Ray(this.x, this.y, a, (a - this.a), this.rayColor);
-    }
-  }
-  
-  // the dot can only move forward and backwards, but can change
-  //  its direction by turning.
-  movement() {
-    let dx = Math.cos(this.a);
-    let dy = Math.sin(this.a);
-    if (this.move[0] == true) 
-      this.a -= 0.03;
-    if (this.move[1] == true) {
-      this.x += dx;
-      this.y += dy;
-    }
-    if (this.move[2] == true) 
-      this.a += 0.03;
-    if (this.move[3] == true) {
-      this.x -= dx;
-      this.y -= dy;
-    }
-  }
-  
-  // this function simply calls in the ray's function to calculate the
-  //  distance between the walls passed by the parameter. The ray's auto
-  //  -maticlly update their values.
-  detectWall(...walls) {
-    for (let i = 0; i < this.rays.length; ++i) 
-      this.rays[i].rayWalls(walls);
-  }
-  
-  // this function acts similar to a map function. The input value is
-  //  scaled to fit within its new setting.
-  scale(num, inMin, inMax, outMin, outMax) {
-    if (num > inMax)
-      num = inMax;
-    return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
-  }
-  
-  // draws the 3d representation of the dot's fov
-  //  with the use of ray casting.
-  pov(canvas, ctx) {
-    // initialized variables
-    let d, h, a;
-    let sceneH = canvas.height;
-    let sceneW = canvas.width;
-    let w = sceneW/this.rays.length;
-    
-    // loop through all rays and draw the wall
-    for (let i = 0; i < this.rays.length; ++i) {
-      // check if there's a ray
-      d = this.rays[i].rayLength();
-      a = this.rays[i].a - this.a;
-      d *= Math.cos(a);
-      h = this.scale(d, 0, 500, sceneH, 0);
-      d = this.scale(d, 0, this.render, 255, 0);
-      ctx.fillStyle = `rgb(${d}, ${d}, ${d})`;
-      ctx.fillRect(sceneW-(i * w), (sceneH - h)/2, -w, h);
-    }
+
+  // Updates the player's position based on input and collision detection.
+  updateMovement(dt, keys, world) {
+    let forward = 0;
+
+    if (keys.has("arrowup") || keys.has("w")) 
+      forward += 1;
+
+    if (keys.has("arrowdown") || keys.has("s")) 
+      forward -= 1;
+
+    if (forward === 0) 
+      return;
+
+    const distance = forward * this.speed * dt;
+    const nextX = this.x + Math.cos(this.angle) * distance;
+    const nextY = this.y + Math.sin(this.angle) * distance;
+
+    // Test each axis independently to allow wall sliding.
+    if (!world.collidesWithWalls(nextX, this.y, this.radius))
+      this.x = nextX;
+
+    if (!world.collidesWithWalls(this.x, nextY, this.radius)) 
+      this.y = nextY;
   }
 }
 
 
-// wall
+// Wall
+// Represents one line segment in the 2D world.
 class Wall {
-  constructor(x1, y1, x2, y2, color) {
-    this.color = color;
+  constructor(x1, y1, x2, y2, color = "White") {
     this.x1 = x1;
     this.y1 = y1;
     this.x2 = x2;
     this.y2 = y2;
+    this.color = color;
   }
-  
-  // draws the 2d representation of the wall onto the canvas.
-  draw(canvas, ctx) {
+
+  // Draws the wall on the 2D map.
+  draw(ctx) {
+    ctx.save();
+
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 2;
+
     ctx.beginPath();
     ctx.moveTo(this.x1, this.y1);
     ctx.lineTo(this.x2, this.y2);
-    ctx.strokeStyle = this.color;
     ctx.stroke();
+
+    ctx.restore();
   }
 }
 
 
-// Variable initialization
-let canvas = new CanvasLoop('cvs');
-canvas.setSize(500, 500);
-let dot = new Dot(canvas.w/2, canvas.h/2);
-const walls = [];
-walls.push(new Wall(100, 100, 200, 100, 'black'));
-walls.push(new Wall(200, 100, 200, 150, 'black'));
-walls.push(new Wall(200, 150, 100, 150, 'black'));
-walls.push(new Wall(100, 150, 100, 100, 'black'));
+// Utility functions
 
-walls.push(new Wall(10, 10, canvas.w-10, 10, 'black'));
-walls.push(new Wall(canvas.w-10, 10, canvas.w-10, canvas.h-10, 'black'));
-walls.push(new Wall(canvas.w-10, canvas.h-10, 10, canvas.h-10, 'black'));
-walls.push(new Wall(10, canvas.h-10, 10, 10, 'black'));
+// Returns the shortest distance between a point and a segment.
+function distancePointToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
 
-walls.push(new Wall(100, 200, 100, canvas.h-100, 'black'));
-walls.push(new Wall(100, 200, canvas.w-200, canvas.h-100, 'black'));
+  const lengthSquared = dx * dx + dy * dy;
 
+  // Handle a segment whose endpoints are identical.
+  if (lengthSquared === 0) 
+    return Math.hypot(px - x1, py - y1);
 
-// for the ray casting
-let ray_cast = new CanvasLoop('rays');
-ray_cast.setBackground('black');
+  // Project the point onto the segment and clamp the result
+  // so the closest point cannot extend beyond either endpoint.
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSquared));
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
 
-
-// GLOBAL controls
-document.addEventListener("keydown", keyDownHandler, false);
-function keyDownHandler(e) {
-  // constrols for the dot
-  i = e.keyCode - 37;
-  if (i >= 0 && i <= 3) 
-    dot.move[i] = true;
-}
-document.addEventListener("keyup", keyUpHandler, false);
-function keyUpHandler(e) {
-  // constrols for the dot
-  i = e.keyCode - 37;
-  if (i >= 0 && i <= 3) 
-    dot.move[i] = false;
+  return Math.hypot(px - closestX, py - closestY);
 }
 
 
-// setup
-canvas.setup(dot);
-window.requestAnimationFrame(loop);
+// Initialization
 
-// game loop
-function loop() {
-  // setting up the dot and walls
-  canvas.clear();
-  canvas.draw(dot, ...walls);
-  canvas.update(dot);
-  dot.detectWall(...walls);
-  
-  // the visual pov of the dot when it detects the walls
-  ray_cast.clear();
-  dot.pov(ray_cast.canvas, ray_cast.ctx);
-  
-  // keep requesting new frames
-  window.requestAnimationFrame(loop);
-}
+const mapView = new CanvasView("cvs", null, 500, 500);
+const sceneView = new CanvasView("rays", "#111111", 800, 500);
 
+const walls = [
+  // Outer boundary.
+  new Wall(10, 10, 480, 10),
+  new Wall(490, 20, 490, 490),
+  new Wall(490, 490, 10, 490),
+  new Wall(10, 490, 10, 10),
+
+  // Internal room.
+  new Wall(100, 100, 200, 100),
+  new Wall(200, 100, 200, 150),
+  new Wall(200, 150, 100, 150),
+  new Wall(100, 150, 100, 100),
+
+  // Corridor.
+  new Wall(100, 200, 100, 400),
+  new Wall(100, 400, 300, 400)
+];
+
+const world = new World(walls);
+const player = new Player(250, 250);
+
+const raycaster = new Raycaster(player, world, {rayCount: 320, maxDistance: 800});
+
+const game = new Game(
+  player,
+  world,
+  raycaster,
+  mapView,
+  sceneView
+);
+
+game.start();

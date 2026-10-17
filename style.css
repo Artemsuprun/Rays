@@ -1,0 +1,105 @@
+/*
+  File Name:  main.css
+  Author:     Artem Suprun
+  Date:       06/14/2022
+  Summary:    A CSS style file for the JsCanvas folder.
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --color-primary: #413C58;
+  --color-background: #BFD7B5;
+  --color-surface: #E7EFC5;
+  --color-canvas: #171620;
+  --color-text: #413C58;
+  --color-muted: #413C58;
+  --color-border: #413C58;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 40px 24px 24px;
+  display: grid;
+  place-items: center;
+  align-content: start;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: 16px/1.5 system-ui, sans-serif;
+}
+
+
+main {
+  width: min(100%, 1100px);
+}
+
+h1 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--color-primary);
+}
+
+h2 {
+  color: var(--color-primary);
+  margin-bottom: 12px;
+}
+
+p {
+  max-width: 75ch;
+}
+
+.views {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 2px solid var(--color-primary);
+  border-radius: 6px;
+  background: var(--color-canvas);
+}
+
+.help {
+  color: var(--color-primary);
+  margin: 4px 0;
+}
+
+.demo-panel {
+  background: var(--color-surface);
+  padding: 28px;
+  border: 1px solid #A3C4BC;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgb(65 60 88 / 10%);
+}
+
+hr {
+  border: none;
+  height: 4px;
+  background-color: var(--color-background);
+  width: 100%;
+  margin: 1rem auto;
+}
+
+@media (max-width: 700px) {
+  body {
+    padding: 16px;
+  }
+
+  .views {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .demo-panel {
+    padding: 18px;
+  }
+}

@@ -6,24 +6,40 @@
 //                  JS canvas.
 -->
 
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Light Rays</title>
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="description" content="A page testing javascript canvas" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Rays</title>
         <!-- Path to css file -->
-        <link rel="stylesheet" href="./main.css" />
+        <link rel="stylesheet" href="style.css">
     </head>
     <body>
-        <!-- the game -->
-        <canvas id="cvs" height="400" width="400"></canvas>
-        <canvas id="rays" height="400" width="400"></canvas>
-        <!-- controls -->
-        
-        <!-- Path to the js file -->
-        <script src="./script.js"></script>
+        <main>
+            <div class="demo-panel">
+                <h1>Rays</h1>
+                <hr/>
+                <p>Hey there! Welcome to the Rays demo. My name is Artem and I'm excited to show you this!</p>
+                <p class="help">Move: W / D or Up / Down Arrow</p>
+                <p class="help">Turn: A / D or Left / Right Arrow</p>
+
+                <div class="views">
+                    <section>
+                        <h2>2D Map</h2>
+                        <canvas id="cvs" width="500" height="500"></canvas>
+                    </section>
+
+                    <section>
+                        <h2>First-Person View</h2>
+                        <canvas id="rays" width="800" height="500"></canvas>
+                    </section>
+                </div>
+            </div>
+        </main>
+
+        <script src="script.js"></script>
     </body>
 </html>
