@@ -11,6 +11,8 @@ The program renders the environment from two perspectives:
 
 This shows us how a three-dimensional effect can be created using two-dimensional geometry and rendering techniques.
 
+![Image of the program running](img/r1.PNG)
+
 ## How Raycasting works
 
 Raycasting is a rendering technique that projects rays from the player's position into the environment to determine the distance to nearby walls.
